@@ -20,6 +20,7 @@ type DecodedMessage struct {
 
 func main() {
 	psclient_address := flag.String("psclient_address", "0.0.0.0:8099", "--address defines the address of the pubsubclient server")
+	flag.Parse()
 	resp, err := http.Get(
 		fmt.Sprintf("http://%s/clientConnect?username=server&password=serverpass",
 			*psclient_address))
