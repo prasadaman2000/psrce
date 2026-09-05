@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
@@ -29,22 +30,29 @@ func main() {
 		fmt.Printf("%s\n", body)
 	}
 
-	file, err := os.Open("a.out")
+	fileBytes, err := os.ReadFile("a.out")
 	if err != nil {
-		fmt.Printf("%s\n", err)
+		fmt.Printf("File error: %v\n", err)
 		return
 	}
 
-	resp, err = http.Post(
-		fmt.Sprintf("http://%s/publish?username=client&password=clientpass&topic=newRCEUser",
-			*psclient_address), "application/octet-stream", file)
-	if err != nil {
-		fmt.Printf("%s\n", err)
+	fmt.Printf("Publishing binary payload size: %d bytes\n", len(fileBytes))
+	if len(fileBytes) == 0 {
+		fmt.Println("Error: a.out is 0 bytes on disk!")
 		return
 	}
+
+	publishURL := fmt.Sprintf("http://%s/publish?username=client&password=clientpass&topic=newRCEUser", *psclient_address)
+	resp, err = http.Post(publishURL, "application/octet-stream", bytes.NewReader(fileBytes))
+	if err != nil {
+		fmt.Printf("Publish error: %v\n", err)
+		return
+	}
+	defer resp.Body.Close()
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Printf("%s\n", err)
+		fmt.Printf("Error reading publish response: %v\n", err)
 		return
 	}
 	fmt.Printf("%s\n", body)
