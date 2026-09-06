@@ -19,7 +19,10 @@ type DecodedMessage struct {
 func main() {
 	psclient_address := flag.String("psclient_address", "0.0.0.0:8099",
 		"--address defines the address of the pubsubclient server")
+	executable_path := flag.String("executable_path", "a.out",
+		"--executable_path defines the executable path to transfer")
 	flag.Parse()
+
 	resp, err := http.Get(
 		fmt.Sprintf("http://%s/clientConnect?username=client&password=clientpass", *psclient_address))
 	if err != nil {
@@ -30,7 +33,7 @@ func main() {
 		fmt.Printf("%s\n", body)
 	}
 
-	fileBytes, err := os.ReadFile("a.out")
+	fileBytes, err := os.ReadFile(*executable_path)
 	if err != nil {
 		fmt.Printf("File error: %v\n", err)
 		return
