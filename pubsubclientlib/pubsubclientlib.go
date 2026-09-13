@@ -27,7 +27,8 @@ func NewPubSubClientInstance(
 	psclient_address string,
 ) (*PubSubClientInstance, error) {
 	resp, err := http.Get(
-		fmt.Sprintf("http://%s/clientConnect?username=client&password=clientpass", psclient_address))
+		fmt.Sprintf("http://%s/clientConnect?username=%s&password=%s",
+			psclient_address, username, password))
 	if err != nil {
 		return nil, err
 	}
