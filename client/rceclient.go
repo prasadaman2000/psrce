@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -21,6 +22,9 @@ func main() {
 		"--address defines the address of the pubsubclient server")
 	executable_path := flag.String("executable_path", "a.out",
 		"--executable_path defines the executable path to transfer")
+	remote_alias := flag.String("remote_alias", "local",
+		"--remote_alias defines the host to send command to")
+
 	flag.Parse()
 
 	resp, err := http.Get(
@@ -45,7 +49,17 @@ func main() {
 		return
 	}
 
-	publishURL := fmt.Sprintf("http://%s/publish?username=client&password=clientpass&topic=newRCEUser", *psclient_address)
+	subscribeTopic := fmt.Sprintf("%s_Outputs", *remote_alias)
+	subscribeUrl := fmt.Sprintf("http://%s/subscribe?username=client&password=clientpass&topic=%s", *psclient_address, subscribeTopic)
+	resp, err = http.Get(subscribeUrl)
+	if err != nil {
+		fmt.Printf("Subscribe error: %v\n", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	publishTopic := fmt.Sprintf("%s_Commands", *remote_alias)
+	publishURL := fmt.Sprintf("http://%s/publish?username=client&password=clientpass&topic=%s", *psclient_address, publishTopic)
 	resp, err = http.Post(publishURL, "application/octet-stream", bytes.NewReader(fileBytes))
 	if err != nil {
 		fmt.Printf("Publish error: %v\n", err)
@@ -59,4 +73,27 @@ func main() {
 		return
 	}
 	fmt.Printf("%s\n", body)
+
+	time.Sleep(5 * time.Second)
+	resp, err = http.Get(
+		fmt.Sprintf("http://%s/poll?username=client&password=clientpass&topic=%s",
+			*psclient_address, subscribeTopic))
+	if err != nil {
+		fmt.Printf("%s\n", err)
+		return
+	}
+	body, err = io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("%s\n", err)
+		return
+	}
+	var messages []DecodedMessage
+	err = json.Unmarshal(body, &messages)
+	if err != nil {
+		fmt.Printf("Unmarshal error: %s, %s\n", err, body)
+		return
+	}
+	for _, message := range messages {
+		fmt.Printf("%s\n", message.Msg)
+	}
 }
