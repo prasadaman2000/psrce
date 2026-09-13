@@ -10,6 +10,51 @@ import (
 	"time"
 )
 
+func handleRCEPayload(
+	rcePayload *rcelib.RCEPayload, outboundTopic string, psclient *pubsubclientlib.PubSubClientInstance) {
+	out, err := os.OpenFile(rcePayload.Name, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+	if err != nil {
+		fmt.Printf("%s\n", err)
+		return
+	}
+	if _, err := out.Write(rcePayload.Data); err != nil {
+		fmt.Printf("%s\n", err)
+		return
+	}
+	out.Close()
+	var responseString string
+	var stdout []byte
+	if rcePayload.Type == rcelib.PayloadExecutable {
+		fmt.Printf("executing %s\n", rcePayload.Name)
+		cmd := exec.Command(fmt.Sprintf("./%s", rcePayload.Name))
+		stdout, err = cmd.Output()
+		if err != nil {
+			fmt.Printf("%s\n", err)
+			responseString = "Error"
+		} else {
+			fmt.Print(string(stdout))
+			responseString = string(stdout)
+		}
+	} else {
+		responseString = fmt.Sprintf("%s saved successfully.", rcePayload.Name)
+	}
+	var responsePayload []byte
+	if err != nil {
+		responsePayload, err = rcelib.SerialzeErrorResponse(err, rcePayload.ID)
+	} else {
+		responsePayload, err = rcelib.SerializeOkResponse([]byte(responseString), rcePayload.ID)
+	}
+	if err != nil {
+		fmt.Printf("%s\n", err)
+		return
+	}
+	err = psclient.Publish(outboundTopic, responsePayload)
+	if err != nil {
+		fmt.Printf("%s\n", err)
+		return
+	}
+}
+
 func main() {
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -48,47 +93,7 @@ func main() {
 				fmt.Printf("%s\n", err)
 				return
 			}
-			out, err := os.OpenFile(rcePayload.Name, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
-			if err != nil {
-				fmt.Printf("%s\n", err)
-				return
-			}
-			if _, err := out.Write(rcePayload.Data); err != nil {
-				fmt.Printf("%s\n", err)
-				break
-			}
-			out.Close()
-			var responseString string
-			var stdout []byte
-			if rcePayload.Type == rcelib.PayloadExecutable {
-				fmt.Printf("executing %s\n", rcePayload.Name)
-				cmd := exec.Command(fmt.Sprintf("./%s", rcePayload.Name))
-				stdout, err = cmd.Output()
-				if err != nil {
-					fmt.Printf("%s\n", err)
-					responseString = "Error"
-				} else {
-					fmt.Print(string(stdout))
-					responseString = string(stdout)
-				}
-			} else {
-				responseString = fmt.Sprintf("%s saved successfully.", rcePayload.Name)
-			}
-			var responsePayload []byte
-			if err != nil {
-				responsePayload, err = rcelib.SerialzeErrorResponse(err, rcePayload.ID)
-			} else {
-				responsePayload, err = rcelib.SerializeOkResponse([]byte(responseString), rcePayload.ID)
-			}
-			if err != nil {
-				fmt.Printf("%s\n", err)
-				return
-			}
-			err = psclient.Publish(outboundTopic, responsePayload)
-			if err != nil {
-				fmt.Printf("%s\n", err)
-				return
-			}
+			go handleRCEPayload(rcePayload, outboundTopic, psclient)
 		}
 		time.Sleep(time.Second * 5)
 	}
