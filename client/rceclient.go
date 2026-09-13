@@ -1,21 +1,12 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
+	"pubsubclientlib"
 	"time"
 )
-
-type DecodedMessage struct {
-	Msg   []byte    `json:"Msg"`
-	Time  time.Time `json:"Time"`
-	Topic string    `json:"topic"`
-}
 
 func main() {
 	psclient_address := flag.String("psclient_address", "0.0.0.0:8099",
@@ -27,14 +18,10 @@ func main() {
 
 	flag.Parse()
 
-	resp, err := http.Get(
-		fmt.Sprintf("http://%s/clientConnect?username=client&password=clientpass", *psclient_address))
+	psclient, err := pubsubclientlib.NewPubSubClientInstance("client", "clientpass", *psclient_address)
 	if err != nil {
-		fmt.Printf("%s\n", err)
+		fmt.Printf("Could not create client: %s", err)
 		return
-	} else {
-		body, _ := io.ReadAll(resp.Body)
-		fmt.Printf("%s\n", body)
 	}
 
 	fileBytes, err := os.ReadFile(*executable_path)
@@ -50,47 +37,23 @@ func main() {
 	}
 
 	subscribeTopic := fmt.Sprintf("%s_Outputs", *remote_alias)
-	subscribeUrl := fmt.Sprintf("http://%s/subscribe?username=client&password=clientpass&topic=%s", *psclient_address, subscribeTopic)
-	resp, err = http.Get(subscribeUrl)
+	err = psclient.Subscribe(subscribeTopic)
 	if err != nil {
 		fmt.Printf("Subscribe error: %v\n", err)
 		return
 	}
-	defer resp.Body.Close()
 
 	publishTopic := fmt.Sprintf("%s_Commands", *remote_alias)
-	publishURL := fmt.Sprintf("http://%s/publish?username=client&password=clientpass&topic=%s", *psclient_address, publishTopic)
-	resp, err = http.Post(publishURL, "application/octet-stream", bytes.NewReader(fileBytes))
+	err = psclient.Publish(publishTopic, fileBytes)
 	if err != nil {
 		fmt.Printf("Publish error: %v\n", err)
 		return
 	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Printf("Error reading publish response: %v\n", err)
-		return
-	}
-	fmt.Printf("%s\n", body)
 
 	time.Sleep(5 * time.Second)
-	resp, err = http.Get(
-		fmt.Sprintf("http://%s/poll?username=client&password=clientpass&topic=%s",
-			*psclient_address, subscribeTopic))
+	messages, err := psclient.Poll()
 	if err != nil {
 		fmt.Printf("%s\n", err)
-		return
-	}
-	body, err = io.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Printf("%s\n", err)
-		return
-	}
-	var messages []DecodedMessage
-	err = json.Unmarshal(body, &messages)
-	if err != nil {
-		fmt.Printf("Unmarshal error: %s, %s\n", err, body)
 		return
 	}
 	for _, message := range messages {

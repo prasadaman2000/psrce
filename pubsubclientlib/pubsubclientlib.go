@@ -43,7 +43,7 @@ func NewPubSubClientInstance(
 
 func (psci *PubSubClientInstance) Subscribe(topic string) error {
 	subscribeUrl := fmt.Sprintf("http://%s/subscribe?username=%s&password=%s&topic=%s",
-		psci.username, psci.password, psci.psclient_address, topic)
+		psci.psclient_address, psci.username, psci.password, topic)
 	resp, err := http.Get(subscribeUrl)
 	if err != nil {
 		fmt.Printf("Subscribe error: %v\n", err)
@@ -55,7 +55,7 @@ func (psci *PubSubClientInstance) Subscribe(topic string) error {
 
 func (psci *PubSubClientInstance) Publish(topic string, payload []byte) error {
 	publishURL := fmt.Sprintf("http://%s/publish?username=%s&password=%s&topic=%s",
-		psci.username, psci.password, psci.psclient_address, topic)
+		psci.psclient_address, psci.username, psci.password, topic)
 	resp, err := http.Post(publishURL, "application/octet-stream", bytes.NewReader(payload))
 	if err != nil {
 		fmt.Printf("Publish error: %v\n", err)
@@ -68,7 +68,7 @@ func (psci *PubSubClientInstance) Publish(topic string, payload []byte) error {
 func (psci *PubSubClientInstance) Poll() ([]DecodedMessage, error) {
 	resp, err := http.Get(
 		fmt.Sprintf("http://%s/poll?username=%s&password=%s",
-			psci.username, psci.password, psci.psclient_address))
+			psci.psclient_address, psci.username, psci.password))
 	if err != nil {
 		return nil, err
 	}

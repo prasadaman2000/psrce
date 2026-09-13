@@ -1,23 +1,14 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
 	"os/exec"
+	"pubsubclientlib"
 	"time"
 )
-
-type DecodedMessage struct {
-	Msg   []byte    `json:"Msg"`
-	Time  time.Time `json:"Time"`
-	Topic string    `json:"topic"`
-}
 
 func main() {
 	hostname, err := os.Hostname()
@@ -34,44 +25,22 @@ func main() {
 	incomingTopic := fmt.Sprintf("%s_Commands", *host_alias)
 	outboundTopic := fmt.Sprintf("%s_Outputs", *host_alias)
 
-	resp, err := http.Get(
-		fmt.Sprintf("http://%s/clientConnect?username=%s&password=serverpass",
-			*psclient_address, username))
+	psclient, err := pubsubclientlib.NewPubSubClientInstance(username, "serverpass", *psclient_address)
 	if err != nil {
 		fmt.Printf("%s\n", err)
-	} else {
-		body, _ := io.ReadAll(resp.Body)
-		fmt.Printf("%s\n", body)
 	}
 
-	resp, err = http.Get(
-		fmt.Sprintf("http://%s/subscribe?username=%s&password=serverpass&topic=%s",
-			*psclient_address, username, incomingTopic))
+	err = psclient.Subscribe(incomingTopic)
 	if err != nil {
 		fmt.Printf("%s\n", err)
 		return
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	fmt.Printf("%s\n", body)
-
 	for {
-		resp, err = http.Get(
-			fmt.Sprintf("http://%s/poll?username=%s&password=serverpass&topic=%s",
-				*psclient_address, username, incomingTopic))
+		messages, err := psclient.Poll()
 		if err != nil {
 			fmt.Printf("%s\n", err)
 			return
-		}
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			fmt.Printf("%s\n", err)
-			return
-		}
-		var messages []DecodedMessage
-		err = json.Unmarshal(body, &messages)
-		if err != nil {
-			fmt.Printf("Unmarshal: %s, %s\n", err, body)
 		}
 		for _, message := range messages {
 			out, err := os.OpenFile("b.out", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
@@ -91,18 +60,9 @@ func main() {
 				log.Fatalf("Command failed: %s", err)
 			}
 			fmt.Print(string(stdout))
-			publishURL := fmt.Sprintf("http://%s/publish?username=%s&password=serverpass&topic=%s",
-				*psclient_address, username, outboundTopic)
-			resp, err = http.Post(publishURL, "application/octet-stream", bytes.NewReader(stdout))
+			err = psclient.Publish(outboundTopic, stdout)
 			if err != nil {
 				fmt.Printf("Publish error: %v\n", err)
-				return
-			}
-			defer resp.Body.Close()
-
-			_, err = io.ReadAll(resp.Body)
-			if err != nil {
-				fmt.Printf("Error reading publish response: %v\n", err)
 				return
 			}
 		}
