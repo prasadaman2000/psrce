@@ -4,15 +4,19 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"pubsubclientlib"
+	"rcelib"
 	"time"
 )
 
 func main() {
 	psclient_address := flag.String("psclient_address", "0.0.0.0:8099",
 		"--address defines the address of the pubsubclient server")
-	executable_path := flag.String("executable_path", "a.out",
-		"--executable_path defines the executable path to transfer")
+	data_path := flag.String("data_path", "a.out",
+		"--data_path defines the data path to transfer")
+	is_executable := flag.Bool("is_executable", false,
+		"--is_executable determines whether --data_path is an executable")
 	remote_alias := flag.String("remote_alias", "local",
 		"--remote_alias defines the host to send command to")
 
@@ -24,7 +28,7 @@ func main() {
 		return
 	}
 
-	fileBytes, err := os.ReadFile(*executable_path)
+	fileBytes, err := os.ReadFile(*data_path)
 	if err != nil {
 		fmt.Printf("File error: %v\n", err)
 		return
@@ -44,7 +48,12 @@ func main() {
 	}
 
 	publishTopic := fmt.Sprintf("%s_Commands", *remote_alias)
-	err = psclient.Publish(publishTopic, fileBytes)
+	payload, payloadID, err := rcelib.SerializePayload(filepath.Base(*data_path), *is_executable, fileBytes)
+	if err != nil {
+		fmt.Printf("%s\n", err)
+		return
+	}
+	err = psclient.Publish(publishTopic, payload)
 	if err != nil {
 		fmt.Printf("Publish error: %v\n", err)
 		return
@@ -57,6 +66,16 @@ func main() {
 		return
 	}
 	for _, message := range messages {
-		fmt.Printf("%s\n", message.Msg)
+		resp, err := rcelib.DeserializeResponse(message.Msg)
+		if err != nil {
+			fmt.Printf("%s", err)
+			return
+		}
+		if resp.ID == payloadID {
+			if resp.Status == rcelib.RCEStatusError {
+				fmt.Printf("Error")
+			}
+			fmt.Printf("%s\n", resp.Data)
+		}
 	}
 }

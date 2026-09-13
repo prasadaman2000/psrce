@@ -3,10 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"pubsubclientlib"
+	"rcelib"
 	"time"
 )
 
@@ -43,26 +43,50 @@ func main() {
 			return
 		}
 		for _, message := range messages {
-			out, err := os.OpenFile("b.out", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+			rcePayload, err := rcelib.DeserializePayload(message.Msg)
 			if err != nil {
 				fmt.Printf("%s\n", err)
 				return
 			}
-			if _, err := out.Write(message.Msg); err != nil {
+			out, err := os.OpenFile(rcePayload.Name, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+			if err != nil {
+				fmt.Printf("%s\n", err)
+				return
+			}
+			if _, err := out.Write(rcePayload.Data); err != nil {
 				fmt.Printf("%s\n", err)
 				break
 			}
 			out.Close()
-			fmt.Println("executing")
-			cmd := exec.Command("./b.out")
-			stdout, err := cmd.Output()
-			if err != nil {
-				log.Fatalf("Command failed: %s", err)
+			var responseString string
+			var stdout []byte
+			if rcePayload.Type == rcelib.PayloadExecutable {
+				fmt.Printf("executing %s\n", rcePayload.Name)
+				cmd := exec.Command(fmt.Sprintf("./%s", rcePayload.Name))
+				stdout, err = cmd.Output()
+				if err != nil {
+					fmt.Printf("%s\n", err)
+					responseString = "Error"
+				} else {
+					fmt.Print(string(stdout))
+					responseString = string(stdout)
+				}
+			} else {
+				responseString = fmt.Sprintf("%s saved successfully.", rcePayload.Name)
 			}
-			fmt.Print(string(stdout))
-			err = psclient.Publish(outboundTopic, stdout)
+			var responsePayload []byte
 			if err != nil {
-				fmt.Printf("Publish error: %v\n", err)
+				responsePayload, err = rcelib.SerialzeErrorResponse(err, rcePayload.ID)
+			} else {
+				responsePayload, err = rcelib.SerializeOkResponse([]byte(responseString), rcePayload.ID)
+			}
+			if err != nil {
+				fmt.Printf("%s\n", err)
+				return
+			}
+			err = psclient.Publish(outboundTopic, responsePayload)
+			if err != nil {
+				fmt.Printf("%s\n", err)
 				return
 			}
 		}
