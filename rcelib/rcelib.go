@@ -56,11 +56,7 @@ func SerializePayload(name string, isExecutable bool, payload []byte) ([]byte, s
 		id.String(),
 	})
 
-	if err != nil {
-		return nil, "", err
-	}
-
-	return serialized, id.String(), nil
+	return serialized, id.String(), err
 }
 
 func DeserializePayload(payload []byte) (*RCEPayload, error) {
