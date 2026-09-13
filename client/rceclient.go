@@ -19,6 +19,8 @@ func main() {
 		"--is_executable determines whether --data_path is an executable")
 	remote_alias := flag.String("remote_alias", "local",
 		"--remote_alias defines the host to send command to")
+	timeout := flag.Duration("timeout", 5*time.Second,
+		"--timeout defines how long to wait for the rce to complete")
 
 	flag.Parse()
 
@@ -59,23 +61,38 @@ func main() {
 		return
 	}
 
-	time.Sleep(5 * time.Second)
-	messages, err := psclient.Poll()
-	if err != nil {
-		fmt.Printf("%s\n", err)
-		return
-	}
-	for _, message := range messages {
-		resp, err := rcelib.DeserializeResponse(message.Msg)
+	waitInterval := *timeout / 10
+	waitStart := time.Now()
+	for {
+		messages, err := psclient.Poll()
 		if err != nil {
-			fmt.Printf("%s", err)
+			fmt.Printf("%s\n", err)
 			return
 		}
-		if resp.ID == payloadID {
-			if resp.Status == rcelib.RCEStatusError {
-				fmt.Printf("Error")
+		foundResponse := false
+		for _, message := range messages {
+			resp, err := rcelib.DeserializeResponse(message.Msg)
+			if err != nil {
+				fmt.Printf("%s", err)
+				return
 			}
-			fmt.Printf("%s\n", resp.Data)
+			if resp.ID == payloadID {
+				if resp.Status == rcelib.RCEStatusError {
+					fmt.Printf("Error")
+				}
+				fmt.Printf("%s\n", resp.Data)
+				foundResponse = true
+			}
 		}
+		if foundResponse {
+			break
+		}
+		timeSinceStart := time.Since(waitStart)
+		if timeSinceStart > *timeout {
+			fmt.Printf("Did not get a response in %s, exiting.\n", timeSinceStart)
+			break
+		}
+		fmt.Printf("Response not found, waiting for %s...\n", waitInterval)
+		time.Sleep(waitInterval)
 	}
 }
