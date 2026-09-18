@@ -81,6 +81,8 @@ func main() {
 		return
 	}
 
+	fmt.Printf("Listening to messages on %s\n", incomingTopic)
+
 	for {
 		messages, err := psclient.Poll()
 		if err != nil {
