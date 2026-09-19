@@ -21,6 +21,8 @@ func main() {
 		"--remote_alias defines the host to send command to")
 	timeout := flag.Duration("timeout", 5*time.Second,
 		"--timeout defines how long to wait for the rce to complete")
+	out_file := flag.String("out_file", "/tmp/psrce_out",
+		"--out_file describes where to write the remote command output.")
 
 	flag.Parse()
 
@@ -80,7 +82,11 @@ func main() {
 				if resp.Status == rcelib.RCEStatusError {
 					fmt.Printf("Error")
 				}
-				fmt.Printf("%s\n", resp.Data)
+				err = os.WriteFile(*out_file, resp.Data, 0755)
+				if err != nil {
+					fmt.Printf("%s\n", err)
+				}
+				fmt.Printf("Wrote command output to %s \n", *out_file)
 				foundResponse = true
 			}
 		}
