@@ -47,6 +47,8 @@ func main() {
 	}
 
 	var wg sync.WaitGroup
+	var mu sync.Mutex
+	payloadIds := make(map[string]string)
 
 	funcToRun := func(remote_alias string) {
 		defer wg.Done()
@@ -69,51 +71,57 @@ func main() {
 			fmt.Printf("Publish error: %v\n", err)
 			return
 		}
-
-		waitInterval := *timeout / 10
-		waitStart := time.Now()
-		for {
-			messages, err := psclient.Poll()
-			if err != nil {
-				fmt.Printf("%s\n", err)
-				return
-			}
-			foundResponse := false
-			for _, message := range messages {
-				resp, err := rcelib.DeserializeResponse(message.Msg)
-				if err != nil {
-					fmt.Printf("%s", err)
-					return
-				}
-				if resp.ID == payloadID {
-					if resp.Status == rcelib.RCEStatusError {
-						fmt.Printf("Error")
-					}
-					err = os.WriteFile(*out_file, resp.Data, 0755)
-					if err != nil {
-						fmt.Printf("%s\n", err)
-					}
-					fmt.Printf("Wrote command output to %s \n", *out_file)
-					foundResponse = true
-				}
-			}
-			if foundResponse {
-				break
-			}
-			timeSinceStart := time.Since(waitStart)
-			if timeSinceStart > *timeout {
-				fmt.Printf("Did not get a response in %s, exiting.\n", timeSinceStart)
-				break
-			}
-			fmt.Printf("Response not found, waiting for %s...\n", waitInterval)
-			time.Sleep(waitInterval)
-		}
+		mu.Lock()
+		payloadIds[payloadID] = remote_alias
+		mu.Unlock()
 	}
 
-	for _, remote_alias := range strings.Split(*remote_aliases, ",") {
+	for remote_alias := range strings.SplitSeq(*remote_aliases, ",") {
 		go funcToRun(remote_alias)
 		wg.Add(1)
 	}
 	wg.Wait()
-	fmt.Println("all workers finished")
+	waitInterval := *timeout / 10
+	waitStart := time.Now()
+	for {
+		messages, err := psclient.Poll()
+		if err != nil {
+			fmt.Printf("%s\n", err)
+			return
+		}
+		for _, message := range messages {
+			resp, err := rcelib.DeserializeResponse(message.Msg)
+			if err != nil {
+				fmt.Printf("%s", err)
+				return
+			}
+			if remoteHost, ok := payloadIds[resp.ID]; ok {
+				if resp.Status == rcelib.RCEStatusError {
+					fmt.Printf("Error")
+				}
+				outFileForRemote := *out_file + "_" + remoteHost
+				err = os.WriteFile(outFileForRemote, resp.Data, 0755)
+				if err != nil {
+					fmt.Printf("%s\n", err)
+				}
+				fmt.Printf("Wrote command output to %s \n", outFileForRemote)
+				delete(payloadIds, resp.ID)
+			}
+		}
+		if len(payloadIds) == 0 {
+			break
+		}
+		timeSinceStart := time.Since(waitStart)
+		if timeSinceStart > *timeout {
+			fmt.Print("Did not get responses from: ")
+			for _, remoteHost := range payloadIds {
+				fmt.Printf("%s ", remoteHost)
+			}
+			fmt.Println()
+			break
+		}
+		fmt.Printf("Response not found, waiting for %s...\n", waitInterval)
+		time.Sleep(waitInterval)
+	}
+	fmt.Println("All workers finished")
 }
