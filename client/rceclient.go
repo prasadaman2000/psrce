@@ -116,6 +116,11 @@ func main() {
 			fmt.Print("Did not get responses from: ")
 			for _, remoteHost := range payloadIds {
 				fmt.Printf("%s ", remoteHost)
+				outFileForRemote := *out_file + "_" + remoteHost
+				err = os.WriteFile(outFileForRemote, []byte("No Response"), 0755)
+				if err != nil {
+					fmt.Printf("%s\n", err)
+				}
 			}
 			fmt.Println()
 			break
